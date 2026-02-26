@@ -31,7 +31,7 @@ It reads your video library from disk, organizes it by series/season/episode, an
 
 - Node.js 18+ (recommended)
 - npm
-- A local video library (default: `D:\animes`)
+- A local video library (default: `D:\`)
 
 ## Installation
 
@@ -260,3 +260,4 @@ npm-debug.log*
 ## License
 
 ISC (as defined in `package.json`).
+
