@@ -22,6 +22,14 @@ const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 function isVideo(f) { return VIDEO_EXTS.includes(path.extname(f).toLowerCase()); }
 
+function getSafeVideoPath(filePath) {
+  const relPath = decodeURIComponent(String(filePath || '')).replace(/^[/\\]?videos[/\\]/, '');
+  const absPath = path.resolve(VIDEOS_DIR, relPath);
+  if (!absPath.startsWith(path.resolve(VIDEOS_DIR))) return null;
+  if (!fs.existsSync(absPath)) return null;
+  return absPath;
+}
+
 function toSlug(str) {
   return str
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -201,6 +209,49 @@ app.post('/api/refresh', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/video', (req, res) => {
+  const absPath = getSafeVideoPath(req.query.file);
+  if (!absPath) return res.status(404).send('Arquivo nao encontrado');
+
+  const ext = path.extname(absPath).toLowerCase();
+  const stat = fs.statSync(absPath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+  const mime = ({
+    '.mp4': 'video/mp4',
+    '.mkv': 'video/x-matroska',
+    '.webm': 'video/webm',
+    '.m4v': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+  })[ext] || 'application/octet-stream';
+
+  if (!range) {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mime,
+      'Accept-Ranges': 'bytes',
+    });
+    return fs.createReadStream(absPath).pipe(res);
+  }
+
+  const parts = range.replace(/bytes=/, '').split('-');
+  const start = parseInt(parts[0], 10);
+  const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+  if (isNaN(start) || isNaN(end) || start >= fileSize || end >= fileSize || start > end) {
+    res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+    return res.end();
+  }
+
+  const chunkSize = (end - start) + 1;
+  res.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+    'Accept-Ranges': 'bytes',
+    'Content-Length': chunkSize,
+    'Content-Type': mime,
+  });
+  return fs.createReadStream(absPath, { start, end }).pipe(res);
+});
 // SRT → WebVTT
 function detectEncoding(buf) {
   // Detecta UTF-8 com BOM
@@ -301,3 +352,6 @@ app.listen(PORT, '0.0.0.0', () => {
   ips.forEach(ip => console.log(`   Rede: http://${ip}:${PORT}`));
   console.log(`📁 ${VIDEOS_DIR}\n`);
 });
+
+
+

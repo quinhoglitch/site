@@ -11,7 +11,14 @@
 <body>
 
 <nav class="navbar" id="navbar">
-  <div class="nav-logo" onclick="goHome()">STREAMIX</div>
+  <div class="nav-left">
+    <div class="nav-logo" onclick="goHome()">STREAMIX</div>
+    <div class="nav-links">
+      <button class="nav-link active" onclick="goHome()">Inicio</button>
+      <button class="nav-link" onclick="goHome()">Series</button>
+      <button class="nav-link" onclick="goHome()">Continuar</button>
+    </div>
+  </div>
   <div class="nav-search">
     <div class="search-wrap">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -50,7 +57,10 @@
         <p class="hero-label">EM DESTAQUE</p>
         <h1 class="hero-title" id="heroTitle">Carregando...</h1>
         <p class="hero-desc" id="heroDesc"></p>
-        <button class="btn-play" onclick="heroPlay()">▶ Assistir</button>
+        <div class="hero-actions">
+          <button class="btn-play" onclick="heroPlay()">&#9654; Assistir</button>
+          <button class="btn-ghost" onclick="heroPlay()">Mais detalhes</button>
+        </div>
       </div>
       <div class="hero-gradient"></div>
     </div>
@@ -142,3 +152,5 @@
 <script src="/js/app.js"></script>
 </body>
 </html>
+
+

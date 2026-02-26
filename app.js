@@ -12,6 +12,30 @@ let searchTimer = null;
 
 const PROGRESS_KEY = 'smx_progress';
 
+function buildPlayableUrl(file) {
+  const rel = String(file || '').replace(/^\/videos\//, '');
+  return `/api/video?file=${encodeURIComponent(rel)}`;
+}
+
+function toVideoRel(file) {
+  return String(file || '').replace(/^\/videos\//, '');
+}
+
+function buildInternalSubtitleUrl(file, streamIndex) {
+  return `/api/subtitle-track?file=${encodeURIComponent(toVideoRel(file))}&stream=${encodeURIComponent(streamIndex)}`;
+}
+
+async function fetchInternalSubtitleSources(file) {
+  const url = `/api/subtracks?file=${encodeURIComponent(toVideoRel(file))}`;
+  const json = await fetch(url).then(r => r.ok ? r.json() : { tracks: [] }).catch(() => ({ tracks: [] }));
+  const tracks = Array.isArray(json.tracks) ? json.tracks : [];
+  return tracks.map(t => ({
+    label: t.label || `Legenda ${t.order ?? ''}`.trim(),
+    lang: t.lang || 'und',
+    url: buildInternalSubtitleUrl(file, t.streamIndex),
+  }));
+}
+
 // ── INIT ───────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   await loadLibrary();
@@ -19,6 +43,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupNavScroll();
   handleHash();
   window.addEventListener('hashchange', handleHash);
+  document.addEventListener('fullscreenchange', subApplyDisplayMode);
   document.getElementById('mainPlayer').addEventListener('ended', () => {
     if (getGlobalEpIndex() < getAllEpisodes().length - 1) setTimeout(nextEpisode, 2000);
   });
@@ -189,7 +214,7 @@ function doPlayEpisode() {
 
   const video = document.getElementById('mainPlayer');
   video.removeEventListener('timeupdate', saveProgress);
-  video.src = ep.file;
+  video.src = buildPlayableUrl(ep.file);
 
   document.getElementById('playerSeries').textContent = currentSeries.name;
   document.getElementById('playerEp').textContent = `${season.label} · Episódio ${ep.episode}`;
@@ -229,13 +254,82 @@ let _subIdx   = -1;
 let _subSrcs  = [];
 let _subRAF   = null;
 let _subLast  = null;
+let _subUseNative = false;
 let _subToken = 0;      // incrementa a cada episódio — evita race conditions
 const _subCache = {};   // cache global: url → cues[]
 
+function subMountNativeTracks() {
+  const video = document.getElementById('mainPlayer');
+  video.querySelectorAll('track[data-smx-sub="1"]').forEach(t => t.remove());
+  _subSrcs.forEach((s, i) => {
+    const tr = document.createElement('track');
+    tr.kind = 'subtitles';
+    tr.label = s.label || ('Legenda ' + (i + 1));
+    tr.srclang = (s.lang || 'pt').slice(0, 2);
+    tr.src = s.url;
+    tr.default = i === 0;
+    tr.dataset.smxSub = '1';
+    video.appendChild(tr);
+  });
+}
+
+function subSelectNative(idx) {
+  const video = document.getElementById('mainPlayer');
+  const tracks = Array.from(video.textTracks || []);
+  const mine = tracks.slice(0, _subSrcs.length);
+  if (!mine.length) return false;
+  mine.forEach(t => { t.mode = 'disabled'; });
+  if (idx >= 0 && mine[idx]) mine[idx].mode = 'showing';
+  _subUseNative = true;
+  return true;
+}
+
+function isPlayerFullscreen() {
+  const fs = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!fs) return false;
+  const video = document.getElementById('mainPlayer');
+  const wrapper = video.closest('.video-wrapper');
+  return fs === video || fs === wrapper;
+}
+
+function subDisableNativeTracks() {
+  const video = document.getElementById('mainPlayer');
+  Array.from(video.textTracks || []).forEach(t => { t.mode = 'disabled'; });
+}
+
+function subApplyDisplayMode() {
+  const overlay = document.getElementById('subOverlay');
+  if (!overlay) return;
+
+  if (_subIdx < 0) {
+    _subUseNative = false;
+    subDisableNativeTracks();
+    overlay.style.display = '';
+    return;
+  }
+
+  if (isPlayerFullscreen() && subSelectNative(_subIdx)) {
+    overlay.style.display = 'none';
+    return;
+  }
+
+  _subUseNative = false;
+  subDisableNativeTracks();
+  overlay.style.display = '';
+}
+
+function subRenderButtons() {
+  const btns = document.getElementById('subBtns');
+  btns.innerHTML =
+    '<button class="sub-btn" data-idx="-1" onclick="subSelect(-1)">Desativada</button>' +
+    _subSrcs.map((s, i) =>
+      `<button class="sub-btn" data-idx="${i}" onclick="subSelect(${i})">${s.label}</button>`
+    ).join('');
+}
 function subInit(ep) {
   subStop();
   _subToken++;
-  _subCues = []; _subIdx = -1; _subSrcs = []; _subLast = null;
+  _subCues = []; _subIdx = -1; _subSrcs = []; _subLast = null; _subUseNative = false;
 
   const bar     = document.getElementById('subBar');
   const btns    = document.getElementById('subBtns');
@@ -244,24 +338,36 @@ function subInit(ep) {
   bar.style.display = 'none';
   btns.innerHTML = '';
 
-  if (!ep.subtitles || ep.subtitles.length === 0) return;
-
-  _subSrcs = ep.subtitles.map(s => ({
+  const external = Array.isArray(ep.subtitles) ? ep.subtitles : [];
+  _subSrcs = external.map(s => ({
     label: s.label || s.lang || 'Legenda',
+    lang: s.lang || 'pt',
     url: s.ext === 'srt'
       ? `/api/srt2vtt?file=${encodeURIComponent(s.file.replace(/^\/videos\//, ''))}`
       : s.file,
   }));
 
-  bar.style.display = 'flex';
-  btns.innerHTML =
-    '<button class="sub-btn" data-idx="-1" onclick="subSelect(-1)">Desativada</button>' +
-    _subSrcs.map((s, i) =>
-      `<button class="sub-btn" data-idx="${i}" onclick="subSelect(${i})">${s.label}</button>`
-    ).join('');
+  if (_subSrcs.length) {
+    bar.style.display = 'flex';
+    subRenderButtons();
+    subMountNativeTracks();
+    subStartLoop();
+    subSelect(0);
+  }
 
-  subStartLoop();
-  subFetch(0, _subToken);
+  const token = _subToken;
+  fetchInternalSubtitleSources(ep.file).then((internal) => {
+    if (token !== _subToken) return;
+    if (!internal.length) return;
+    const hadAny = _subSrcs.length > 0;
+    _subSrcs = _subSrcs.concat(internal);
+    bar.style.display = 'flex';
+    subRenderButtons();
+    subMountNativeTracks();
+    if (!_subRAF) subStartLoop();
+    if (!hadAny || _subIdx < 0) subSelect(0);
+    else subApplyDisplayMode();
+  }).catch(() => {});
 }
 
 async function subFetch(idx, token) {
@@ -289,13 +395,21 @@ async function subFetch(idx, token) {
 
 function subSelect(idx) {
   _subCues = []; _subLast = null;
-  document.getElementById('subOverlay').textContent = '';
+  const overlay = document.getElementById('subOverlay');
+  overlay.textContent = '';
   document.querySelectorAll('#subBtns .sub-btn').forEach(b =>
     b.classList.toggle('active', parseInt(b.dataset.idx) === idx)
   );
 
-  if (idx < 0) { _subIdx = -1; return; }
+  if (idx < 0) {
+    _subIdx = -1;
+    subApplyDisplayMode();
+    return;
+  }
   _subIdx = idx;
+  subApplyDisplayMode();
+  if (_subUseNative) return;
+
   const src = _subSrcs[idx];
   if (!src) return;
 
@@ -323,12 +437,25 @@ function subParse(text) {
       if (lines[i].includes('-->')) { timeLine = lines[i]; textStart = i + 1; break; }
     }
     if (!timeLine) continue;
-    // Regex aceita horas opcionais e vírgula ou ponto nos ms
-    const m = timeLine.match(/(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/);
+    // Aceita VTT em HH:MM:SS.mmm ou MM:SS.mmm
+    const m = timeLine.match(/((?:\d+:)?\d{2}:\d{2}[,.]\d+)\s*-->\s*((?:\d+:)?\d{2}:\d{2}[,.]\d+)/);
     if (!m) continue;
-    const toS = (h,mn,s,ms) => +h*3600 + +mn*60 + +s + +ms/1000;
-    const start = toS(m[1],m[2],m[3],m[4]);
-    const end   = toS(m[5],m[6],m[7],m[8]);
+    const toS = (ts) => {
+      const parts = ts.replace(',', '.').split(':');
+      if (parts.length === 3) {
+        const [h, mn, secMs] = parts;
+        const [s, ms = '0'] = secMs.split('.');
+        return (+h * 3600) + (+mn * 60) + (+s) + (+ms / 1000);
+      }
+      if (parts.length === 2) {
+        const [mn, secMs] = parts;
+        const [s, ms = '0'] = secMs.split('.');
+        return (+mn * 60) + (+s) + (+ms / 1000);
+      }
+      return NaN;
+    };
+    const start = toS(m[1]);
+    const end   = toS(m[2]);
     if (isNaN(start) || isNaN(end) || end <= start) continue;
     const clean = lines.slice(textStart).join('\n')
       .replace(/\{[^}]*\}/g, '').replace(/<\/?[a-zA-Z][^>]*>/g, '').trim();
@@ -346,6 +473,7 @@ function subStartLoop() {
 
   function tick() {
     _subRAF = requestAnimationFrame(tick);
+    if (_subUseNative) return;
     if (_subIdx < 0 || !_subCues.length) {
       if (_subLast !== '') { overlay.textContent = ''; _subLast = ''; }
       return;
@@ -363,6 +491,7 @@ function subStartLoop() {
 
 function subStop() {
   if (_subRAF) { cancelAnimationFrame(_subRAF); _subRAF = null; }
+  subDisableNativeTracks();
 }
 
 // ── PROGRESSO ──────────────────────────
@@ -494,3 +623,5 @@ function showView(name) {
   document.getElementById(`view-${name}`).classList.add('active');
   document.title = 'STREAMIX';
 }
+
+

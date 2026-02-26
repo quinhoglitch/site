@@ -721,3 +721,129 @@ body {
   color: #fff;
   font-weight: 600;
 }
+
+/* Netflix-like polish */
+:root {
+  --bg: #090909;
+  --surface: #111;
+  --surface2: #161616;
+  --surface3: #2a2a2a;
+  --text2: #c4c4c4;
+  --text3: #8b8b8b;
+  --radius: 4px;
+}
+
+body {
+  background:
+    radial-gradient(1200px 800px at 10% -10%, rgba(229, 9, 20, 0.2), transparent 55%),
+    linear-gradient(180deg, #151515 0%, #090909 20%, #090909 100%);
+}
+
+.navbar {
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+}
+
+.navbar.scrolled {
+  background: rgba(0, 0, 0, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-link {
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: #fff;
+}
+
+.hero-bg {
+  filter: brightness(.36) saturate(1.12);
+}
+
+.hero-gradient {
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.34) 45%, rgba(0, 0, 0, 0.12) 100%),
+    linear-gradient(to top, #090909 0%, rgba(9, 9, 9, 0.4) 50%, transparent 100%);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-play {
+  border-radius: 4px;
+}
+
+.btn-ghost {
+  border: none;
+  border-radius: 4px;
+  padding: 13px 22px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(109, 109, 110, 0.72);
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(135, 135, 136, 0.72);
+}
+
+.section {
+  padding-top: 30px;
+}
+
+.card {
+  border-radius: 4px;
+  background: #181818;
+}
+
+.card:hover {
+  transform: scale(1.08) translateY(-8px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.8);
+}
+
+.card-info {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(16, 16, 16, 0.85) 100%);
+}
+
+.card-title {
+  color: #fff;
+  font-weight: 600;
+}
+
+.season-tab.active {
+  background: #fff;
+  color: #111;
+}
+
+.video-wrapper {
+  border-radius: 2px;
+}
+
+@media (max-width: 900px) {
+  .nav-links {
+    display: none;
+  }
+}
